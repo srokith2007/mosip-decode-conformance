@@ -1,0 +1,8 @@
+{
+  "certify": {
+    "expected_result": "FAILED"
+  },
+  "verify": {
+    "expected_result": "INTERRUPTED"
+  }
+}

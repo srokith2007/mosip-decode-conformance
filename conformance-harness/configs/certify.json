@@ -1,0 +1,19 @@
+{
+  "component": "certify",
+  "plan": "oid4vci-1_0-issuer-haip-test-plan",
+  "plan_variant": {
+    "credential_format": "sd_jwt_vc",
+    "vci_authorization_code_flow_variant": "wallet_initiated",
+    "grant_management": "disabled"
+  },
+  "test": "oid4vci-1_0-issuer-metadata-test",
+  "test_variant": {
+    "client_auth_type": "client_attestation",
+    "fapi_profile": "vci_haip"
+  },
+  "configuration": {
+    "vci": {
+      "credential_issuer_url": "http://certify-nginx"
+    }
+  }
+}

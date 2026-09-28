@@ -1,0 +1,410 @@
+name: inji-verify build upon a push
+
+on:
+  release:
+    types: [published]
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches:
+      - '!release-branch'
+      - release*
+      - master
+      - 1.*
+      - develop
+      - MOSIP*
+
+permissions:
+  contents: read
+
+jobs:
+  build-dockers-inji-verify:
+    strategy:
+      matrix:
+        include:
+          - SERVICE_LOCATION: "verify-ui"
+            SERVICE_NAME: "inji-verify-ui"
+            PLATFORMS: "linux/amd64"
+      fail-fast: false
+    name: ${{ matrix.SERVICE_NAME }}
+    uses: mosip/kattu/.github/workflows/docker-build.yml@v0.0.1
+    with:
+      SERVICE_LOCATION: ${{ matrix.SERVICE_LOCATION }}
+      SERVICE_NAME: ${{ matrix.SERVICE_NAME }}
+      PLATFORMS: ${{ matrix.PLATFORMS }}
+    secrets:
+      DEV_NAMESPACE_DOCKER_HUB: ${{ secrets.DEV_NAMESPACE_DOCKER_HUB }}
+      ACTOR_DOCKER_HUB: ${{ secrets.ACTOR_DOCKER_HUB }}
+      RELEASE_DOCKER_HUB: ${{ secrets.RELEASE_DOCKER_HUB }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  sonar-analysis-inji-verify:
+    if: "${{  github.event_name != 'pull_request' }}"
+    needs: build-dockers-inji-verify
+    uses: mosip/kattu/.github/workflows/npm-sonar-analysis.yml@v0.0.1
+    with:
+      SERVICE_LOCATION: ./verify-ui
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      ORG_KEY: ${{ secrets.ORG_KEY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+      
+  sonar-analysis-inji-verify-service:
+    if: "${{  github.event_name != 'pull_request' }}"
+    uses: mosip/kattu/.github/workflows/maven-sonar-analysis.yml@v0.0.1
+    with:
+      SERVICE_LOCATION: verify-service
+    secrets:
+      OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
+      GPG_SECRET: ${{ secrets.GPG_SECRET }}
+      OSSRH_USER: ${{ secrets.OSSRH_INJI_USER }}
+      OSSRH_SECRET: ${{ secrets.OSSRH_INJI_SECRET }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      ORG_KEY: ${{ secrets.ORG_KEY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  build-inji-verify-service:
+    uses: mosip/kattu/.github/workflows/maven-build.yml@v0.0.1
+    with:
+      SERVICE_LOCATION: ./
+      BUILD_ARTIFACT: inji-verify-service
+      MAVEN_NON_EXEC_ARTIFACTS : "verify-service*.jar"
+      LICENSE_NAME: 'Apache 2.0'
+    secrets:
+      OSSRH_USER: ${{ secrets.OSSRH_INJI_USER }}
+      OSSRH_SECRET: ${{ secrets.OSSRH_INJI_SECRET }}
+      OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
+      GPG_SECRET: ${{ secrets.GPG_SECRET }}
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_INJI_TEAM }}
+      
+  publish_to_nexus:
+    if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' }}"
+    needs: build-inji-verify-service
+    uses: mosip/kattu/.github/workflows/maven-publish-to-nexus.yml@v0.0.1
+    with:
+      SERVICE_LOCATION: ./
+    secrets:
+      OSSRH_USER: ${{ secrets.OSSRH_USER }}
+      OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
+      OSSRH_URL: ${{ secrets.OSSRH_CENTRAL_URL }}
+      OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
+      GPG_SECRET: ${{ secrets.GPG_SECRET }}
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  build-dockers:
+      needs: build-inji-verify-service
+      strategy:
+        matrix:
+          include:
+            - SERVICE_LOCATION: 'verify-service'
+              SERVICE_NAME: 'inji-verify-service'
+              BUILD_ARTIFACT: 'inji-verify-service'
+              SQUASH_LAYERS: '7'
+        fail-fast: false
+      name: ${{ matrix.SERVICE_NAME }}
+      uses: mosip/kattu/.github/workflows/docker-build.yml@v0.0.1
+      with:
+        SERVICE_LOCATION: ${{ matrix.SERVICE_LOCATION }}
+        SERVICE_NAME: ${{ matrix.SERVICE_NAME }}
+        BUILD_ARTIFACT: ${{ matrix.BUILD_ARTIFACT }}
+        SQUASH_LAYERS: ${{ matrix.SQUASH_LAYERS }}
+      secrets:
+        DEV_NAMESPACE_DOCKER_HUB: ${{ secrets.DEV_NAMESPACE_DOCKER_HUB }}
+        ACTOR_DOCKER_HUB: ${{ secrets.ACTOR_DOCKER_HUB }}
+        RELEASE_DOCKER_HUB: ${{ secrets.RELEASE_DOCKER_HUB }}
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+        
+  build-maven-apitest-inji-verify:
+    uses: mosip/kattu/.github/workflows/maven-build.yml@v0.0.1
+    with:
+      SERVICE_LOCATION: ./api-test
+      BUILD_ARTIFACT: apitest-inji-verify
+      LICENSE_NAME: 'Apache 2.0'
+    secrets:
+      OSSRH_USER: ${{ secrets.OSSRH_USER }}
+      OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
+      OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
+      GPG_SECRET: ${{ secrets.GPG_SECRET }}
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  build-apitest-inji-verify-local:
+    needs: build-maven-apitest-inji-verify
+    runs-on: ubuntu-latest
+    env:
+      NAMESPACE: ${{ secrets.dev_namespace_docker_hub }}
+      SERVICE_NAME: apitest-inji-verify
+      SERVICE_LOCATION: api-test
+      BUILD_ARTIFACT: apitest-inji-verify-local
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: 21
+          server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
+          settings-path: ${{ github.workspace }} # location for the settings.xml file
+      - name: Setup the settings file for ossrh server
+        run: echo "<settings> <servers>  <server>  <id>ossrh</id>    <username>${{secrets.ossrh_user}}</username> <password>${{secrets.ossrh_secret}}</password> </server> </servers> <profiles> <profile>     <id>ossrh</id> <activation> <activeByDefault>true</activeByDefault> </activation>  <properties> <gpg.executable>gpg2</gpg.executable> <gpg.passphrase>${{secrets.gpg_secret}}</gpg.passphrase> </properties> </profile> <profile> <id>allow-snapshots</id>       <activation><activeByDefault>true</activeByDefault></activation> <repositories> <repository>        <id>snapshots-repo</id> <url>https://oss.sonatype.org/content/repositories/snapshots</url> <releases><enabled>false</enabled></releases> <snapshots><enabled>true</enabled></snapshots> </repository>  <repository>         <id>releases-repo</id>  <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>         <releases><enabled>true</enabled></releases>         <snapshots><enabled>false</enabled></snapshots> </repository> </repositories>  </profile> <profile> <id>sonar</id> <properties>  <sonar.sources>.</sonar.sources> <sonar.host.url>https://sonarcloud.io</sonar.host.url>  </properties> <activation> <activeByDefault>false</activeByDefault> </activation> </profile> </profiles> </settings>" > $GITHUB_WORKSPACE/settings.xml
+      - name: Build Automationtests with Maven
+        run: |
+          cd ${{ env.SERVICE_LOCATION}}
+          mvn clean package -s $GITHUB_WORKSPACE/settings.xml
+      - name: Copy configuration files to target directory.
+        run: |
+          cp -r ${{ env.SERVICE_LOCATION}}/target/classes/config ${{ env.SERVICE_LOCATION}}/target/config
+          cp -r ${{ env.SERVICE_LOCATION}}/testNgXmlFiles ${{ env.SERVICE_LOCATION}}/target/testNgXmlFiles
+      - name: Ready the springboot artifacts
+        if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
+        run: |
+          ## FIND JARS & COPY ONLY EXECUTABLE JARs STORED UNDER TARGET DIRECTORY 
+          find ${{ env.SERVICE_LOCATION }} -path '*/target/*' -exec zip ${{ env.BUILD_ARTIFACT }}.zip {} +
+      - name: Upload the springboot jars
+        if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUILD_ARTIFACT }}
+          path: ${{ env.BUILD_ARTIFACT }}.zip
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+        if: failure() # Pick up events even if the job fails or is canceled.
+
+  build-dockers_apitest_inji_verify:
+    needs: build-apitest-inji-verify-local
+    strategy:
+      matrix:
+        include:
+          - SERVICE_LOCATION: 'api-test'
+            SERVICE_NAME: 'apitest-inji-verify'
+            BUILD_ARTIFACT: 'apitest-inji-verify-local'
+            ONLY_DOCKER: true
+      fail-fast: false
+    name: ${{ matrix.SERVICE_NAME }}
+    uses: mosip/kattu/.github/workflows/docker-build.yml@v0.0.1
+    with:
+      SERVICE_LOCATION: ${{ matrix.SERVICE_LOCATION }}
+      SERVICE_NAME: ${{ matrix.SERVICE_NAME }}
+      BUILD_ARTIFACT: ${{ matrix.BUILD_ARTIFACT }}
+      ONLY_DOCKER: ${{ matrix.ONLY_DOCKER }}
+    secrets:
+      DEV_NAMESPACE_DOCKER_HUB: ${{ secrets.DEV_NAMESPACE_DOCKER_HUB }}
+      ACTOR_DOCKER_HUB: ${{ secrets.ACTOR_DOCKER_HUB }}
+      RELEASE_DOCKER_HUB: ${{ secrets.RELEASE_DOCKER_HUB }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+      
+  build-maven-ui-test:
+    uses: mosip/kattu/.github/workflows/maven-build.yml@v0.0.1
+    with:
+      SERVICE_LOCATION: ./ui-test
+      BUILD_ARTIFACT: ui-test
+      LICENSE_NAME: 'Apache 2.0'
+    secrets:
+      OSSRH_USER: ${{ secrets.OSSRH_USER }}
+      OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
+      OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
+      GPG_SECRET: ${{ secrets.GPG_SECRET }}
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  build-ui-test-local:
+    needs: build-maven-ui-test
+    runs-on: ubuntu-latest
+    env:
+      NAMESPACE: ${{ secrets.dev_namespace_docker_hub }}
+      SERVICE_NAME: uitest-verify
+      SERVICE_LOCATION: ui-test
+      BUILD_ARTIFACT: ui-test-local
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
+          settings-path: ${{ github.workspace }} # location for the settings.xml file
+
+      - name: Cache local Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Setup the settings file for ossrh server
+        run: echo "<settings> <servers>  <server>  <id>ossrh</id>    <username>${{secrets.ossrh_user}}</username> <password>${{secrets.ossrh_secret}}</password> </server> </servers> <profiles> <profile>     <id>ossrh</id> <activation> <activeByDefault>true</activeByDefault> </activation>  <properties> <gpg.executable>gpg2</gpg.executable> <gpg.passphrase>${{secrets.gpg_secret}}</gpg.passphrase> </properties> </profile> <profile> <id>allow-snapshots</id>       <activation><activeByDefault>true</activeByDefault></activation> <repositories> <repository>        <id>snapshots-repo</id> <url>https://oss.sonatype.org/content/repositories/snapshots</url> <releases><enabled>false</enabled></releases> <snapshots><enabled>true</enabled></snapshots> </repository>  <repository>         <id>releases-repo</id>  <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>         <releases><enabled>true</enabled></releases>         <snapshots><enabled>false</enabled></snapshots> </repository> </repositories>  </profile> <profile> <id>sonar</id> <properties>  <sonar.sources>.</sonar.sources> <sonar.host.url>https://sonarcloud.io</sonar.host.url>  </properties> <activation> <activeByDefault>false</activeByDefault> </activation> </profile> </profiles> </settings>" > $GITHUB_WORKSPACE/settings.xml
+
+      - name: Build ui-test with Maven
+        run: |
+          cd ${{ env.SERVICE_LOCATION}}
+          mvn -U -B package -DskipTests -Dmaven.wagon.http.retryHandler.count=2 --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
+
+      - name: Ready the springboot artifacts
+        if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
+        run: |
+          ## FIND JARS & COPY ONLY EXECUTABLE JARs STORED UNDER TARGET DIRECTORY 
+          find ${{ env.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar'  -type f -exec zip ${{ env.BUILD_ARTIFACT }}.zip {} +
+
+      - name: Upload the springboot jars
+        if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUILD_ARTIFACT }}
+          path: ${{ env.BUILD_ARTIFACT }}.zip
+
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+        if: failure() # Pick up events even if the job fails or is canceled.
+
+  build-dockers-ui-test:
+    needs: build-ui-test-local
+    strategy:
+      matrix:
+        include:
+          - SERVICE_LOCATION: 'ui-test'
+            SERVICE_NAME: 'uitest-verify'
+            BUILD_ARTIFACT: 'ui-test-local'
+      fail-fast: false
+    name: ${{ matrix.SERVICE_NAME }}
+    uses: mosip/kattu/.github/workflows/docker-build.yml@v0.0.1
+    with:
+      SERVICE_LOCATION: ${{ matrix.SERVICE_LOCATION }}
+      SERVICE_NAME: ${{ matrix.SERVICE_NAME }}
+      BUILD_ARTIFACT: ${{ matrix.BUILD_ARTIFACT }}
+    secrets:
+      DEV_NAMESPACE_DOCKER_HUB: ${{ secrets.DEV_NAMESPACE_DOCKER_HUB }}
+      ACTOR_DOCKER_HUB: ${{ secrets.ACTOR_DOCKER_HUB }}
+      RELEASE_DOCKER_HUB: ${{ secrets.RELEASE_DOCKER_HUB }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  run-apitest-pr:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      # - name: Install WireGuard
+      #   run: sudo apt-get install -y wireguard
+
+      # - name: Configure WireGuard
+      #   run: |
+      #     echo "${{ secrets.CLUSTER_WIREGUARD_WG0 }}" | sudo tee /etc/wireguard/wg0.conf
+
+      # - name: Start WireGuard
+      #   run: |
+      #     sudo chmod 600 /etc/wireguard/wg0.conf
+      #     sudo chmod 700 /etc/wireguard/
+      #     sudo chmod 644 /lib/systemd/system/wg-quick@.service
+      #     sudo systemctl daemon-reload
+      #     sudo wg-quick up wg0
+      #     sudo wg show wg0
+
+      - name: Setup the settings file for ossrh server
+        run: echo "<settings> <servers>  <server>  <id>ossrh</id>    <username>${{secrets.ossrh_user}}</username> <password>${{secrets.ossrh_secret}}</password> </server> </servers> <profiles> <profile>     <id>ossrh</id> <activation> <activeByDefault>true</activeByDefault> </activation>  <properties> <gpg.executable>gpg2</gpg.executable> <gpg.passphrase>${{secrets.gpg_secret}}</gpg.passphrase> </properties> </profile> <profile> <id>allow-snapshots</id>       <activation><activeByDefault>true</activeByDefault></activation> <repositories> <repository>        <id>snapshots-repo</id> <url>https://oss.sonatype.org/content/repositories/snapshots</url> <releases><enabled>false</enabled></releases> <snapshots><enabled>true</enabled></snapshots> </repository>  <repository>         <id>releases-repo</id>  <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>         <releases><enabled>true</enabled></releases>         <snapshots><enabled>false</enabled></snapshots> </repository> </repositories>  </profile> <profile> <id>sonar</id> <properties>  <sonar.sources>.</sonar.sources> <sonar.host.url>https://sonarcloud.io</sonar.host.url>  </properties> <activation> <activeByDefault>false</activeByDefault> </activation> </profile> </profiles> </settings>" > $GITHUB_WORKSPACE/settings.xml
+
+      - name: Build verify-service jar
+        run: |
+          cd verify-service
+          mvn clean package -DskipTests
+
+      - name: Build apitest jar
+        run: |
+          cd api-test
+          mvn clean package
+
+      - name: Build verify-service image
+        run: docker build -t inji-verify-service:ci ./verify-service
+
+      - name: Prepare apitest build context
+        run: |
+          cp api-test/entrypoint.sh .
+          cp -r api-test/testNgXmlFiles api-test/target/testNgXmlFiles
+          cp -r api-test/target/classes/config api-test/target/config
+
+      - name: Build apitest image
+        run: docker build -t apitest-inji-verify:ci -f api-test/Dockerfile .
+
+      - name: Start Full Stack
+        run: docker compose -f docker-compose/docker-compose-ci.yaml up -d postgres verify-service
+
+      - name: Wait for Service
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:8080/v1/verify/actuator/health | grep UP; then
+              echo "Service is UP"
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
+
+      - name: Run API Tests
+        id: apitest
+        run: |
+          set +e
+          docker compose -f docker-compose/docker-compose-ci.yaml up --exit-code-from apitest apitest
+          EXIT_CODE=$?
+          echo "EXIT_CODE=$EXIT_CODE" >> $GITHUB_ENV
+          set -e
+
+      - name: Copy reports from container
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          CONTAINER_ID=$(docker ps -a --filter "name=apitest" --format "{{.ID}}" | head -n 1)
+          if [ -n "$CONTAINER_ID" ]; then
+            docker cp $CONTAINER_ID:/home/inji/testng-report/. ci-reports || echo "No reports found"
+          else
+            echo "Apitest container not found"
+          fi
+          ls -R ci-reports || true
+
+      - name: Sanitize report filenames
+        if: always()
+        run: |
+          find ci-reports -depth -name "*:*" -exec bash -c '
+            for f; do
+              mv "$f" "${f//:/_}"
+            done
+          ' _ {} +
+
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inji-verify-test-report
+          path: ci-reports/
+
+      - name: Print verify-service logs
+        if: always()
+        run: docker logs verify-service
+
+      - name: Print all service logs
+        if: always()
+        run: docker compose -f docker-compose/docker-compose-ci.yaml logs
+
+      - name: Shutdown
+        if: always()
+        run: docker compose -f docker-compose/docker-compose-ci.yaml down
+
+      - name: Fail Job If Tests Failed
+        if: env.EXIT_CODE != '0'
+        run: exit 1

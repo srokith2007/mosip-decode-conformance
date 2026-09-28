@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Environment files
+.env
+
+# Python generated files
+.pytest_cache/
+
+# Maven
+**/target/
+
+# Reports / generated output
+**/testng-report/
+automationLogAndReport/
+conformance-harness/reports/*.json
+
+# OpenID Conformance Suite MongoDB data
+conformance-suite/mongo/data/
+
+# Logs
+*.log
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,16 @@
+{
+  "component": "verify",
+  "version": "1.0",
+  "endpoint": "http://verify-service:8080",
+  "plan": "oid4vp-id3-verifier-test-plan",
+  "plan_variant": {
+    "credential_format": "sd_jwt_vc",
+    "client_id_scheme": "x509_san_dns",
+    "query_language": "dcql",
+    "request_method": "request_uri_signed",
+    "response_mode": "direct_post"
+  },
+  "test": "oid4vp-id3-verifier-happy-flow",
+  "test_variant": {},
+  "configuration": {}
+}

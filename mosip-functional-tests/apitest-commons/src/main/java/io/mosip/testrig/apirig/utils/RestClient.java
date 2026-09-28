@@ -1,0 +1,2074 @@
+package io.mosip.testrig.apirig.utils;
+
+import static io.restassured.RestAssured.given;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+
+import javax.ws.rs.core.MediaType;
+
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
+import org.apache.log4j.Logger;
+
+import io.mosip.testrig.apirig.dataprovider.mds.HttpRCapture;
+import io.mosip.testrig.apirig.testrunner.BaseTestCase;
+import io.restassured.RestAssured;
+import io.restassured.config.EncoderConfig;
+import io.restassured.config.HttpClientConfig;
+import io.restassured.config.RestAssuredConfig;
+import io.restassured.http.Cookie;
+import io.restassured.http.Header;
+import io.restassured.response.Response;
+import io.restassured.specification.RequestSpecification;
+
+/**
+ * The Rest assured class to put, post, get request and response
+ * 
+ * @author Vignesh
+ *
+ */
+public class RestClient {
+
+	private static final Logger RESTCLIENT_LOGGER = Logger.getLogger(RestClient.class);
+
+	private static RestAssuredConfig config = RestAssured.config().httpClient(HttpClientConfig.httpClientConfig());
+	protected static final Properties properties = AdminTestUtil
+			.getproperty(BaseTestCase.getGlobalResourcePath() + "/" + "config/application.properties");
+
+	public static Response getWithoutParams(String url, String cookie) {
+
+		Cookie.Builder builder = new Cookie.Builder(GlobalConstants.AUTHORIZATION, cookie);
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a Get request to " + url);
+
+			getResponse = given().cookie(builder.build()).relaxedHTTPSValidation().filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url);
+
+			responseLogger(getResponse);
+			RESTCLIENT_LOGGER.info("REST-ASSURED: the response Time is: " + getResponse.time());
+		} else {
+			getResponse = given().cookie(builder.build()).relaxedHTTPSValidation().when().get(url);
+		}
+
+		return getResponse;
+	}
+
+	public static void responseLogger(Response response) {
+		int statusCode = response.statusCode();
+		if (statusCode < 200 || statusCode > 299) {
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, response.asString());
+		} else
+			RESTCLIENT_LOGGER.info("status code: " + statusCode + "(success)");
+
+	}
+
+	public static Response postWithJson(String url, Object body, String contentHeader, String acceptHeader) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST:ASSURED:Sending post request to" + url);
+
+			postResponse = given().relaxedHTTPSValidation().filter(RestAssuredPrettyLogger.getMaskingFilter()).body(body).contentType(contentHeader).accept(acceptHeader)
+					.when().post(url).then().extract().response();
+			
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+
+		} else {
+			postResponse = given().relaxedHTTPSValidation().body(body).contentType(contentHeader).accept(acceptHeader)
+					.when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	/**
+	 * REST ASSURED POST request method
+	 * 
+	 * @param url
+	 * @param body
+	 * @param contentHeader
+	 * @param acceptHeader
+	 * @return response
+	 */
+	public static Response postRequestWithAuthHeader(String url, Object body, String contentHeader, String acceptHeader,
+			String authHeaderName, String authHeaderValue) {
+		url = GlobalMethods.addToServerEndPointMap(url);
+		Response postResponse;
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().header(authHeaderName, authHeaderValue)
+					.body(body).contentType(contentHeader).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().header(authHeaderName, authHeaderValue)
+					.body(body).contentType(contentHeader).accept(acceptHeader).when().post(url).then().extract()
+					.response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response post(String url, String requestBody) throws Exception {
+		Response response = null;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled())
+			response = RestAssured.given().baseUri(url).contentType(MediaType.APPLICATION_JSON).and()
+					.body(requestBody).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post().then().extract().response();
+		else
+			response = RestAssured.given().baseUri(url).contentType(MediaType.APPLICATION_JSON).and().body(requestBody)
+					.when().post().then().extract().response();
+
+		return response;
+
+	}
+
+	public static String rawHttp(HttpRCapture httpRCapture, String jsonBody) throws IOException {
+
+		String result = "";
+		try (CloseableHttpClient httpClient = HttpClients.createDefault();) {
+			httpRCapture.setEntity(new StringEntity(jsonBody));
+			HttpResponse response = httpClient.execute(httpRCapture);
+			HttpEntity entity = response.getEntity();
+			if (entity != null) {
+				result = EntityUtils.toString(entity);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * REST ASSURED POST request method
+	 * 
+	 * @param url
+	 * @param body
+	 * @param contentHeader
+	 * @param acceptHeader
+	 * @return response
+	 */
+	public static Response postRequest(String url, Object body, String contentHeader, String acceptHeader) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postWithFormPathParamAndFile(String url, Map<String, String> formParams,
+			Map<String, String> pathParams, File file, String fileKeyName, String contentHeader, String cookie) {
+		Cookie.Builder builder = new Cookie.Builder(GlobalConstants.AUTHORIZATION, cookie);
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST:ASSURED:Sending post request with file to" + url);
+			RESTCLIENT_LOGGER.info("Name of the file is" + file.getName());
+
+			postResponse = given().cookie(builder.build()).relaxedHTTPSValidation().multiPart(fileKeyName, file)
+					.pathParams(pathParams).formParams(formParams).contentType(contentHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).expect().when().post(url)
+					.then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().cookie(builder.build()).relaxedHTTPSValidation().multiPart(fileKeyName, file)
+					.pathParams(pathParams).formParams(formParams).contentType(contentHeader).expect().when().post(url)
+					.then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postWithParamsAndFile(String url, Map<String, String> pathParams, File file,
+			String fileKeyName, String contentHeader, String cookie) {
+		Cookie.Builder builder = new Cookie.Builder(GlobalConstants.AUTHORIZATION, cookie);
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST:ASSURED:Sending post request with file to" + url);
+			RESTCLIENT_LOGGER.info("Name of the file is" + file.getName());
+
+			postResponse = given().cookie(builder.build()).relaxedHTTPSValidation().multiPart(fileKeyName, file)
+					.pathParams(pathParams).contentType(contentHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).expect().when().post(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().cookie(builder.build()).relaxedHTTPSValidation().multiPart(fileKeyName, file)
+					.pathParams(pathParams).contentType(contentHeader).expect().when().post(url).then().extract()
+					.response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postWithParamsAndFile(String url, Map<String, String> pathParams, File file,
+			String fileKeyName, String contentHeader, String cookieValue, String idTokenName, String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		tokens.put(GlobalConstants.AUTHORIZATION, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST:ASSURED:Sending post request with file to" + url);
+			RESTCLIENT_LOGGER.info("Name of the file is" + file.getName());
+
+			postResponse = given().cookies(tokens).relaxedHTTPSValidation().multiPart(fileKeyName, file)
+					.pathParams(pathParams).contentType(contentHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).expect().when().post(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().cookies(tokens).relaxedHTTPSValidation().multiPart(fileKeyName, file)
+					.pathParams(pathParams).contentType(contentHeader).expect().when().post(url).then().extract()
+					.response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postWithFormDataAndFile(String url, Map<String, String> formParams, String filePath,
+			String contentHeader, String cookie) {
+		Cookie.Builder builder = new Cookie.Builder(GlobalConstants.AUTHORIZATION, cookie);
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST:ASSURED:Sending post request with file to" + url);
+
+			postResponse = given().cookie(builder.build()).relaxedHTTPSValidation().contentType(contentHeader)
+					.multiPart("files", new File(filePath)).multiPart("tableName", formParams.get("tableName"))
+					.multiPart(GlobalConstants.OPERATION, formParams.get(GlobalConstants.OPERATION))
+					.multiPart("category", formParams.get("category")).filter(RestAssuredPrettyLogger.getMaskingFilter()).expect().when().post(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().cookie(builder.build()).relaxedHTTPSValidation().contentType(contentHeader)
+					.multiPart("files", new File(filePath)).multiPart("tableName", formParams.get("tableName"))
+					.multiPart(GlobalConstants.OPERATION, formParams.get(GlobalConstants.OPERATION))
+					.multiPart("category", formParams.get("category")).expect().when().post(url).then().extract()
+					.response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postWithMultipartFormDataAndFile(String url, Map<String, String> formParams,
+			String contentHeader, String cookie) {
+		url = GlobalMethods.addToServerEndPointMap(url);
+		Cookie.Builder builder = new Cookie.Builder(GlobalConstants.AUTHORIZATION, cookie);
+
+		RequestSpecification requestSpecification = given().cookie(builder.build()).relaxedHTTPSValidation()
+				.contentType(contentHeader).filter(RestAssuredPrettyLogger.getMaskingFilter());
+		for (Map.Entry<String, String> entry : formParams.entrySet()) {
+			requestSpecification.multiPart(entry.getKey(), entry.getValue());
+		}
+		Response postResponse;
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST:ASSURED:Sending post request with file to" + url);
+
+			postResponse = requestSpecification.expect().when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = requestSpecification.expect().when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postWithFormDataAndMultipleFile(String url, Map<String, String> formParams, File[] filePath,
+			String contentHeader, String cookie) {
+		url = GlobalMethods.addToServerEndPointMap(url);
+		Cookie.Builder builder = new Cookie.Builder(GlobalConstants.AUTHORIZATION, cookie);
+
+		RequestSpecification requestSpecification = given().cookie(builder.build()).relaxedHTTPSValidation()
+				.contentType(contentHeader).filter(RestAssuredPrettyLogger.getMaskingFilter());
+		for (int i = 0; i < filePath.length; i++) {
+			requestSpecification.multiPart("files", filePath[i]);
+		}
+		Response postResponse;
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST:ASSURED:Sending post request with file to" + url);
+
+			postResponse = requestSpecification.multiPart("tableName", formParams.get("tableName"))
+					.multiPart(GlobalConstants.OPERATION, formParams.get(GlobalConstants.OPERATION))
+					.multiPart("category", formParams.get("category")).expect().when().post(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = requestSpecification.multiPart("tableName", formParams.get("tableName"))
+					.multiPart(GlobalConstants.OPERATION, formParams.get(GlobalConstants.OPERATION))
+					.multiPart("category", formParams.get("category")).expect().when().post(url).then().extract()
+					.response();
+		}
+
+		return postResponse;
+	}
+
+	/**
+	 * REST ASSURED GET request method
+	 * 
+	 * @param url
+	 * @param contentHeader
+	 * @param acceptHeader
+	 * @param urls
+	 * @return response
+	 */
+	public static Response getRequest(String url, String contentHeader, String acceptHeader, String urls) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url + "?" + urls)
+					.then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().when().get(url + "?" + urls).then().extract()
+					.response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response postRequestWithQueryParamAndBody(String url, Object body, Map<String, String> queryParams,
+			String contentHeader, String acceptHeader) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a POST request with query param " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).queryParams(queryParams)
+					.contentType(contentHeader).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).queryParams(queryParams)
+					.contentType(contentHeader).accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postRequestWithQueryParamsAndBody(String url, Object body, Map<String, Object> queryParams,
+			String contentHeader, String acceptHeader) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a POST request with query param " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).queryParams(queryParams)
+					.contentType(contentHeader).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).queryParams(queryParams)
+					.contentType(contentHeader).accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postRequestWithQueryParamsAndBodyForDecryption(String url, Object body,
+			Map<String, Object> queryParams, String contentHeader) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a POST request with query param " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).queryParams(queryParams)
+					.contentType(contentHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).queryParams(queryParams)
+					.contentType(contentHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response putRequestWithQueryParamAndBody(String url, Object body, Map<String, String> queryParams,
+			String contentHeader, String acceptHeader) {
+		Response puttResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PUT request with query param " + url);
+
+			puttResponse = given().config(config).relaxedHTTPSValidation().body(body).queryParams(queryParams)
+					.contentType(contentHeader).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().put(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + puttResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + puttResponse.time());
+		} else {
+			puttResponse = given().config(config).relaxedHTTPSValidation().body(body).queryParams(queryParams)
+					.contentType(contentHeader).accept(acceptHeader).when().put(url).then().extract().response();
+		}
+
+		return puttResponse;
+	}
+
+	/**
+	 * REST ASSURED GET request method without type or after ?
+	 * 
+	 * @param url
+	 * @param contentHeader
+	 * @param acceptHeader
+	 * @param urls
+	 * @return response
+	 */
+	public static Response getRequest(String url, String contentHeader, String acceptHeader) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("RESSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().when().get(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	/**
+	 * REST ASSURED POST request method
+	 * 
+	 * @param url
+	 * @param File
+	 * @param contentHeader
+	 * @param acceptHeader
+	 * @return response
+	 */
+	public static Response postRequest(String url, File file, String contentHeader, String acceptHeader) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().multiPart(file).contentType(contentHeader)
+					.accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().multiPart(file).contentType(contentHeader)
+					.accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	/**
+	 * REST ASSURED POST request method
+	 * 
+	 * @param url
+	 * @param string
+	 * @param contentHeader
+	 * @param acceptHeader
+	 * @return response
+	 */
+	public static Response postRequest(String url, String content, String contentHeader, MediaType acceptHeader) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(content).contentType(contentHeader)
+					.accept(acceptHeader.toString()).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract()
+					.response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(content).contentType(contentHeader)
+					.accept(acceptHeader.toString()).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	/**
+	 * REST ASSURED PATCH request method
+	 * 
+	 * @param url
+	 * @param body
+	 * @param contentHeader
+	 * @param acceptHeader
+	 * @return response
+	 */
+	public static Response patchRequest(String url, String body, String contentHeader, String acceptHeader) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PATCH request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().patch(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.accept(acceptHeader).when().patch(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static String getCookie(String url, Object body, String contentHeader, String acceptHeader,
+			String cookieName) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse.getCookie(cookieName);
+	}
+
+	public static Response postRequestWithCookie(String url, Object body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postRequestWithCookie(String url, Object body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue, String idTokenName, String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		url = GlobalMethods.addToServerEndPointMap(url);
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		Response postResponse;
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookies(tokens).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract()
+					.response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookies(tokens).accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response deleteRequestWithCookie(String url, Object body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		url = GlobalMethods.addToServerEndPointMap(url);
+		Response deleteResponse;
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a DELETE request to " + url);
+
+			deleteResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().delete(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + deleteResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + deleteResponse.time());
+		} else {
+			deleteResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().delete(url).then().extract()
+					.response();
+		}
+
+		return deleteResponse;
+	}
+
+	public static Response postRequestWithoutCookie(String url, Object body, String contentHeader,
+			String acceptHeader) {
+		url = GlobalMethods.addToServerEndPointMap(url);
+		Response postResponse;
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postRequestWithBearerToken(String url, Object body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().headers(cookieName, "Bearer " + cookieValue).config(config)
+					.contentType(contentHeader).relaxedHTTPSValidation().body(body).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter())
+					.when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().headers(cookieName, "Bearer " + cookieValue).config(config)
+					.contentType(contentHeader).relaxedHTTPSValidation().body(body).accept(acceptHeader).when()
+					.post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postRequestWithHeder(String url, Object body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.header(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.header(cookieName, cookieValue).accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postRequestWithMultipleHeaders(String url, Object body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue, Map<String, String> headers) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when()
+					.post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).when().post(url)
+					.then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postRequestWithMultipleHeadersAndCookies(String url, Object body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue, Map<String, String> headers) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader)
+					.cookie(GlobalConstants.XSRF_TOKEN, BaseTestCase.CSRF_COOKIE)
+					.accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader)
+					.cookie(GlobalConstants.XSRF_TOKEN, BaseTestCase.CSRF_COOKIE)
+					.accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postRequestWithMultipleHeadersAndCookies(String url, Object body, String contentHeader,
+			String acceptHeader, Map<String, String> cookieValue, Map<String, String> headers) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		String key = GlobalConstants.TRANSACTION_ID_KEY;
+		if (cookieValue.containsKey(GlobalConstants.VERIFIED_TRANSACTION_ID_KEY)) {
+			key = GlobalConstants.VERIFIED_TRANSACTION_ID_KEY;
+		} else if (cookieValue.containsKey(GlobalConstants.IDV_TRANSACTION_ID_KEY)) {
+			key = GlobalConstants.IDV_TRANSACTION_ID_KEY;
+		}
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader)
+					.cookie(GlobalConstants.XSRF_TOKEN, BaseTestCase.CSRF_COOKIE)
+					.cookie(key, cookieValue.get(key)).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader)
+					.cookie(GlobalConstants.XSRF_TOKEN, BaseTestCase.CSRF_COOKIE)
+					.cookie(key, cookieValue.get(key)).accept(acceptHeader).when().post(url).then().log().all()
+					.extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postRequestWithMultipleHeadersWithoutCookie(String url, Object body, String contentHeader,
+			String acceptHeader, Map<String, String> headers) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader).accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response patchRequestWithMultipleHeaders(String url, Object body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue, Map<String, String> headers) {
+		Response patchResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PATCH request to " + url);
+
+			patchResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when()
+					.patch(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + patchResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + patchResponse.time());
+		} else {
+			patchResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).when().patch(url)
+					.then().extract().response();
+		}
+
+		return patchResponse;
+	}
+
+	public static Response postRequestWithCookieAndHeader(String url, Object body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue, String authHeaderName, String authHeaderValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().header(authHeaderName, authHeaderValue)
+					.body(body).contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().header(authHeaderName, authHeaderValue)
+					.body(body).contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).when()
+					.post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postRequestWithCookieAndHeader(String url, Object body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue, String authHeaderName, String authHeaderValue,
+			String idTokenName, String idTokenValue) {
+		url = GlobalMethods.addToServerEndPointMap(url);
+		Map<String, String> tokens = new HashMap<>();
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		Response postResponse;
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().header(authHeaderName, authHeaderValue)
+					.body(body).contentType(contentHeader).cookies(tokens).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when()
+					.post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().header(authHeaderName, authHeaderValue)
+					.body(body).contentType(contentHeader).cookies(tokens).accept(acceptHeader).when().post(url).then()
+					.extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response patchRequestWithCookieAndHeader(String url, Object body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue, String authHeaderName, String authHeaderValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PATCH request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().header(authHeaderName, authHeaderValue)
+					.body(body).contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().patch(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().header(authHeaderName, authHeaderValue)
+					.body(body).contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).when()
+					.patch(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response getRequestWithCookie(String url, String contentHeader, String acceptHeader, String urls,
+			String cookieName, String cookieValue) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().cookie(cookieName, cookieValue).filter(RestAssuredPrettyLogger.getMaskingFilter())
+					.when().get(url + "?" + urls).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().cookie(cookieName, cookieValue).when()
+					.get(url + "?" + urls).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response patchRequestWithCookie(String url, String body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PATCH request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().patch(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().patch(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response patchRequestWithCookie(String url, String body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue, String idTokenName, String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		url = GlobalMethods.addToServerEndPointMap(url);
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		Response postResponse;
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PATCH request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookies(tokens).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().patch(url).then().extract()
+					.response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookies(tokens).accept(acceptHeader).when().patch(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response patchRequestWithCookie(String url, Object body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PATCH request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().patch(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().patch(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response getRequestWithCookie(String url, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().cookie(cookieName, cookieValue).filter(RestAssuredPrettyLogger.getMaskingFilter())
+					.when().get(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().cookie(cookieName, cookieValue).when()
+					.get(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response getRequestWithMultipleCookie(String url, String contentHeader, String acceptHeader,
+			Map<String, String> cookieMap) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		String key = GlobalConstants.TRANSACTION_ID_KEY;
+		if (cookieMap.containsKey(GlobalConstants.VERIFIED_TRANSACTION_ID_KEY))
+			key = GlobalConstants.VERIFIED_TRANSACTION_ID_KEY;
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation()
+					.cookie(GlobalConstants.XSRF_TOKEN, BaseTestCase.CSRF_COOKIE)
+					.cookie(key, cookieMap.get(key)).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract()
+					.response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation()
+					.cookie(GlobalConstants.XSRF_TOKEN, BaseTestCase.CSRF_COOKIE)
+					.cookie(key, cookieMap.get(key)).when().get(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response getRequestWithMultipleCookieAndPathParam(String url, Map<String, String> body,
+			String contentHeader, String acceptHeader, Map<String, String> cookieMap) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		String key = GlobalConstants.IDV_TRANSACTION_ID_KEY;
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().pathParams(body)
+					.cookie(GlobalConstants.XSRF_TOKEN,  BaseTestCase.CSRF_COOKIE)
+					.cookie(key, cookieMap.get(key)).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract()
+					.response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().pathParams(body)
+					.cookie(GlobalConstants.XSRF_TOKEN, BaseTestCase.CSRF_COOKIE)
+					.cookie(key, cookieMap.get(key)).when().get(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response getRequestWithCookie(String url, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue, String idTokenName, String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().cookies(tokens).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url)
+					.then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().cookies(tokens).when().get(url).then()
+					.extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response getRequestWithBearerToken(String url, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().headers(cookieName, "Bearer " + cookieValue)
+					.filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().headers(cookieName, "Bearer " + cookieValue)
+					.when().get(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response getRequestWithCookieForKeyCloak(String url, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().headers(cookieName, "Bearer " + cookieValue).config(config).contentType(contentHeader)
+					.relaxedHTTPSValidation().accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().headers(cookieName, "Bearer " + cookieValue).config(config).contentType(contentHeader)
+					.relaxedHTTPSValidation().accept(acceptHeader).when().get(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response getRequestWithCookieForUin(String url, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation()
+					.header(new Header("cookie", cookieName + cookieValue)).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation()
+					.header(new Header("cookie", cookieName + cookieValue)).when().get(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response postRequestWithCookie(String url, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response putRequestWithParm(String url, Map<String, String> body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PUT request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().put(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().put(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response patchRequestWithParm(String url, Map<String, String> body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PATCH request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().patch(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().patch(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response putWithPathParamsBodyAndCookie(String url, Map<String, String> pathParams, String body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PUT request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(pathParams).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when()
+					.put(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(pathParams).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).when().put(url)
+					.then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response putWithPathParamsBodyAndBearerToken(String url, Map<String, String> pathParams, String body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PUT request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(pathParams).body(body)
+					.contentType(contentHeader).headers(cookieName, "Bearer " + cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().put(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(pathParams).body(body)
+					.contentType(contentHeader).headers(cookieName, "Bearer " + cookieValue).accept(acceptHeader).when()
+					.put(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postWithPathParamsBodyAndCookie(String url, Map<String, String> pathParams, String body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(pathParams).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when()
+					.post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(pathParams).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).when().post(url)
+					.then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postWithPathParamsBodyHeadersAndCookie(String url, Map<String, String> pathParams,
+			String body, String contentHeader, String acceptHeader, String cookieName, String cookieValue,
+			Map<String, String> headers) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).pathParams(pathParams)
+					.body(body).contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).pathParams(pathParams)
+					.body(body).contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).when()
+					.post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postWithQueryParamsBodyAndCookie(String url, Map<String, String> queryParams, String body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().queryParams(queryParams).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when()
+					.post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().queryParams(queryParams).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).when().post(url)
+					.then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response postWithBodyAndCookie(String url, Object body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response patchWithPathParamsBodyAndCookie(String url, Map<String, String> pathParams, String body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PUT request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(pathParams).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when()
+					.patch(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(pathParams).body(body)
+					.contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).when().patch(url)
+					.then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response patchWithPathParamsBodyHeaderWithBearerToken(String url, Map<String, String> pathParams, String body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PATCH request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(pathParams).body(body)
+					.contentType(contentHeader).headers(cookieName, "Bearer " + cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when()
+					.patch(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().pathParams(pathParams).body(body)
+					.contentType(contentHeader).headers(cookieName, "Bearer " + cookieValue).accept(acceptHeader).when().patch(url)
+					.then().extract().response();
+		}
+
+		return postResponse;
+	}
+	
+	public static Response postRequestWithQueryParm(String url, Map<String, String> body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response putRequestWithQueryParm(String url, Map<String, String> body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PUT request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().put(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().put(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response putRequestWithCookie(String url, Object body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		Response putResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PUT request to " + url);
+
+			putResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().put(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + putResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + putResponse.time());
+		} else {
+			putResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().put(url).then().extract().response();
+		}
+
+		return putResponse;
+	}
+
+	public static Response putRequestWithCookie(String url, Object body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue, String idTokenName, String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		Response putResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PUT request to " + url);
+
+			putResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookies(tokens).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().put(url).then().extract()
+					.response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + putResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + putResponse.time());
+		} else {
+			putResponse = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader)
+					.cookies(tokens).accept(acceptHeader).when().put(url).then().extract().response();
+		}
+
+		return putResponse;
+	}
+
+	public static Response getRequestWithCookieAndPathParm(String url, Map<String, String> body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().pathParams(body)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().pathParams(body)
+					.cookie(cookieName, cookieValue).when().get(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response getRequestWithCookieAndPathParm(String url, Map<String, String> body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue, String idTokenName, String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().pathParams(body).cookies(tokens).filter(RestAssuredPrettyLogger.getMaskingFilter())
+					.when().get(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().pathParams(body).cookies(tokens).when()
+					.get(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response getRequestWithPathParamsHeadersBodyAndCookie(String url, Map<String, String> pathParams,
+			String body, String contentHeader, String acceptHeader, String cookieName, String cookieValue,
+			Map<String, String> headers) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).pathParams(pathParams)
+					.body(body).contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).pathParams(pathParams)
+					.body(body).contentType(contentHeader).cookie(cookieName, cookieValue).accept(acceptHeader).when()
+					.get(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response getRequestWithCookieAndPathParmForKeyCloak(String url, Map<String, String> body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().headers(cookieName, "Bearer " + cookieValue).config(config).contentType(contentHeader)
+					.relaxedHTTPSValidation().body(body).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().headers(cookieName, "Bearer " + cookieValue).config(config).contentType(contentHeader)
+					.relaxedHTTPSValidation().body(body).accept(acceptHeader).when().get(url).then().extract()
+					.response();
+		}
+
+		return getResponse;
+	}
+
+	public static byte[] getPdf(String url, Map<String, String> body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		byte[] pdf;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			pdf = given().config(config).relaxedHTTPSValidation().pathParams(body).contentType("application/pdf")
+					.accept("*/*").cookie(cookieName, cookieValue).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract()
+					.asByteArray();
+		} else {
+			pdf = given().config(config).relaxedHTTPSValidation().pathParams(body).contentType("application/pdf")
+					.accept("*/*").cookie(cookieName, cookieValue).when().get(url).then().extract().asByteArray();
+		}
+		return pdf;
+	}
+
+	public static byte[] getPdf(String url, Map<String, String> body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue, String idTokenName, String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		byte[] pdf;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			pdf = given().config(config).relaxedHTTPSValidation().pathParams(body).contentType("application/pdf")
+					.accept("*/*").cookies(tokens).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract().asByteArray();
+		} else {
+			pdf = given().config(config).relaxedHTTPSValidation().pathParams(body).contentType("application/pdf")
+					.accept("*/*").cookies(tokens).when().get(url).then().extract().asByteArray();
+		}
+
+		return pdf;
+	}
+
+	public static byte[] postWithBodyForPdf(String url, String body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue) {
+		byte[] pdf;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			pdf = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader).accept("*/*")
+					.cookie(cookieName, cookieValue).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract().asByteArray();
+		} else {
+			pdf = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader).accept("*/*")
+					.cookie(cookieName, cookieValue).when().get(url).then().extract().asByteArray();
+		}
+
+		return pdf;
+	}
+
+	public static byte[] postWithBodyForPdf(String url, String body, String contentHeader, String acceptHeader,
+			String cookieName, String cookieValue, String idTokenName, String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		byte[] pdf;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			pdf = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader).accept("*/*")
+					.cookies(tokens).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract().asByteArray();
+		} else {
+			pdf = given().config(config).relaxedHTTPSValidation().body(body).contentType(contentHeader).accept("*/*")
+					.cookies(tokens).when().get(url).then().extract().asByteArray();
+		}
+
+		return pdf;
+	}
+
+	public static byte[] getPdfWithQueryParm(String url, Map<String, String> body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue) {
+		byte[] pdf;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			pdf = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType("application/pdf")
+					.accept("*/*").cookie(cookieName, cookieValue).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract()
+					.asByteArray();
+		} else {
+			pdf = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType("application/pdf")
+					.accept("*/*").cookie(cookieName, cookieValue).when().get(url).then().extract().asByteArray();
+		}
+
+		return pdf;
+	}
+
+	public static byte[] getPdfWithQueryParm(String url, Map<String, String> body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue, String idTokenName, String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		byte[] pdf;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+			
+			pdf = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType("application/pdf")
+					.accept("*/*").cookies(tokens).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract().asByteArray();
+		} else {
+			pdf = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType("application/pdf")
+					.accept("*/*").cookies(tokens).when().get(url).then().extract().asByteArray();
+		}
+		return pdf;
+	}
+	
+	public static Response getWithQueryParmForBothAccessToken(String url, Map<String, String> body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue, String idTokenName, String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		Response response;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+			
+			response = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType(MediaType.WILDCARD)
+					.accept(MediaType.WILDCARD).cookies(tokens).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url);
+		} else {
+			response = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType(MediaType.WILDCARD)
+					.accept(MediaType.WILDCARD).cookies(tokens).when().get(url);
+		}
+		return response;
+	}
+
+	public static Response getRequestWithCookieAndQueryParm(String url, Map<String, String> body, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().queryParams(body)
+					.cookie(cookieName, cookieValue).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then().extract()
+					.response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().queryParams(body)
+					.cookie(cookieName, cookieValue).when().get(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response getRequestWithQueryParm(String url, Map<String, String> body, String contentHeader,
+			String acceptHeader) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().queryParams(body).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url)
+					.then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().queryParams(body).when().get(url).then()
+					.extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response postRequestWithMultipleHeadersAndMultipleCookies(String url, Object body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue,
+			Map<String, String> headers) {
+		Response postResponse;
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader)
+					.cookie(GlobalConstants.XSRF_TOKEN, BaseTestCase.CSRF_COOKIE)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).body(body)
+					.contentType(contentHeader)
+					.cookie(GlobalConstants.XSRF_TOKEN, BaseTestCase.CSRF_COOKIE)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response patchRequestWithCookieAndQueryParm(String url, Map<String, String> body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a PATCH request to " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().patch(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().queryParams(body).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().patch(url).then().extract().response();
+		}
+		return postResponse;
+	}
+
+	public static Response deleteRequestWithCookieAndPathParm(String url, Map<String, String> body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue) {
+		Response deleteResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a DELETE request to " + url);
+
+			deleteResponse = given().config(config).relaxedHTTPSValidation().pathParams(body)
+					.cookie(cookieName, cookieValue).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().delete(url).then().extract()
+					.response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + deleteResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + deleteResponse.time());
+		} else {
+			deleteResponse = given().config(config).relaxedHTTPSValidation().pathParams(body)
+					.cookie(cookieName, cookieValue).when().delete(url).then().extract().response();
+		}
+
+		return deleteResponse;
+	}
+
+	public static Response deleteRequestWithCookieAndPathParm(String url, Map<String, String> body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue, String idTokenName,
+			String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		Response deleteResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a DELETE request to " + url);
+
+			deleteResponse = given().config(config).relaxedHTTPSValidation().pathParams(body).cookies(tokens).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().delete(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + deleteResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + deleteResponse.time());
+		} else {
+			deleteResponse = given().config(config).relaxedHTTPSValidation().pathParams(body).cookies(tokens).when()
+					.delete(url).then().extract().response();
+		}
+
+		return deleteResponse;
+	}
+
+	public static Response deleteRequest(String url, String contentHeader, String acceptHeader) {
+		Response deleteResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a DELETE request to " + url);
+
+			deleteResponse = given().config(config).relaxedHTTPSValidation().filter(RestAssuredPrettyLogger.getMaskingFilter()).when().delete(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + deleteResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + deleteResponse.time());
+		} else {
+			deleteResponse = given().config(config).relaxedHTTPSValidation().when().delete(url).then().extract()
+					.response();
+		}
+
+		return deleteResponse;
+	}
+
+	public static Response deleteRequestWithCookieAndPathParmForKeyCloak(String url, Map<String, String> body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue) {
+		Response deleteResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a DELETE request to " + url);
+
+			deleteResponse = given().headers(cookieName, "Bearer " + cookieValue).config(config)
+					.contentType(contentHeader).relaxedHTTPSValidation().body(body).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter())
+					.when().delete(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + deleteResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + deleteResponse.time());
+		} else {
+			deleteResponse = given().headers(cookieName, "Bearer " + cookieValue).config(config)
+					.contentType(contentHeader).relaxedHTTPSValidation().body(body).accept(acceptHeader).when()
+					.delete(url).then().extract().response();
+		}
+
+		return deleteResponse;
+	}
+
+	public static Response postRequestWithCookieAndOnlyPathParm(String url, Map<String, String> body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().pathParams(body)
+					.cookie(cookieName, cookieValue).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract()
+					.response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().pathParams(body)
+					.cookie(cookieName, cookieValue).when().post(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response postRequestWithCookieAndOnlyPathParm(String url, Map<String, String> body,
+			String contentHeader, String acceptHeader, String cookieName, String cookieValue, String idTokenName,
+			String idTokenValue) {
+		Map<String, String> tokens = new HashMap<>();
+		tokens.put(cookieName, cookieValue);
+		tokens.put(idTokenName, idTokenValue);
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().pathParams(body).cookies(tokens).filter(RestAssuredPrettyLogger.getMaskingFilter())
+					.when().post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().pathParams(body).cookies(tokens).when()
+					.post(url).then().extract().response();
+		}
+
+		return getResponse;
+	}
+
+	public static Response postRequestWithQueryParamBodyAndCookie(String url, Object body,
+			Map<String, String> queryParams, String contentHeader, String acceptHeader, String cookieName,
+			String cookieValue) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a POST request with query param " + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).queryParams(queryParams)
+					.cookie(cookieName, cookieValue).contentType(contentHeader).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when()
+					.post(url).then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().body(body).queryParams(queryParams)
+					.cookie(cookieName, cookieValue).contentType(contentHeader).accept(acceptHeader).when().post(url)
+					.then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static Response getRequestWithMultipleHeadersAndCookies(String url, String contentHeader,
+			String acceptHeader, String cookieName, String cookieValue, Map<String, String> headers) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info(GlobalConstants.REST_ASSURED_STRING_1 + url);
+
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url).then()
+					.extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + postResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + postResponse.time());
+		} else {
+			postResponse = given().config(config).relaxedHTTPSValidation().headers(headers).contentType(contentHeader)
+					.cookie(cookieName, cookieValue).accept(acceptHeader).when().get(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+
+	public static byte[] postRequestWithFormDataBodyForPdf(String url, Map<String, String> formData) {
+		byte[] pdf;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		EncoderConfig encoderConfig = new EncoderConfig().encodeContentTypeAs("application/x-www-form-urlencoded",
+				io.restassured.http.ContentType.URLENC);
+		RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a POST request to " + url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			pdf = given().config(config.encoderConfig(encoderConfig)).relaxedHTTPSValidation().formParams(formData)
+					.contentType("application/x-www-form-urlencoded").filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract()
+					.asByteArray();
+		} else {
+			pdf = given().config(config.encoderConfig(encoderConfig)).relaxedHTTPSValidation().formParams(formData)
+					.contentType("application/x-www-form-urlencoded").when().post(url).then().extract().asByteArray();
+		}
+
+		return pdf;
+	}
+
+	public static Response postRequestWithFormDataBody(String url, Map<String, String> formData) {
+		Response postResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		EncoderConfig encoderConfig = new EncoderConfig().encodeContentTypeAs(
+				"application/x-www-form-urlencoded; charset=utf-8", io.restassured.http.ContentType.URLENC);
+		RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a POST request to " + url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			postResponse = given().config(config.encoderConfig(encoderConfig)).relaxedHTTPSValidation()
+					.formParams(formData).contentType("application/x-www-form-urlencoded; charset=utf-8").filter(RestAssuredPrettyLogger.getMaskingFilter())
+					.when().post(url).then().extract().response();
+		} else {
+			postResponse = given().config(config.encoderConfig(encoderConfig)).relaxedHTTPSValidation()
+					.formParams(formData).contentType("application/x-www-form-urlencoded; charset=utf-8").when()
+					.post(url).then().extract().response();
+		}
+
+		return postResponse;
+	}
+	
+	public static Response postRequestWithFormDataBodyWithHeaders(String url, Map<String, String> formData,
+			Map<String, String> headers) {
+		Response postResponse = null;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		EncoderConfig encoderConfig = new EncoderConfig().encodeContentTypeAs(
+				"application/x-www-form-urlencoded; charset=utf-8", io.restassured.http.ContentType.URLENC);
+
+		RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a POST request to " + url);
+
+		try {
+			io.restassured.specification.RequestSpecification requestSpec = given()
+					.config(config.encoderConfig(encoderConfig)).relaxedHTTPSValidation()
+					.contentType("application/x-www-form-urlencoded; charset=utf-8").filter(RestAssuredPrettyLogger.getMaskingFilter());
+
+			if (formData != null && !formData.isEmpty()) {
+				requestSpec.formParams(formData);
+			}
+
+			if (headers != null && !headers.isEmpty()) {
+				RESTCLIENT_LOGGER.info("Headers being sent: " + headers);
+				requestSpec.headers(headers);
+			} else {
+				RESTCLIENT_LOGGER.info("No headers provided for this request.");
+			}
+
+			if (ConfigManager.IsDebugEnabled()) {
+				postResponse = requestSpec.filter(RestAssuredPrettyLogger.getMaskingFilter()).when().post(url).then().extract().response();
+			} else {
+				postResponse = requestSpec.when().post(url).then().extract().response();
+			}
+			
+			RESTCLIENT_LOGGER.info("Response Status Code: " + postResponse.getStatusCode());
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, "Response Body: " + postResponse.asString());
+
+		} catch (Exception e) {
+			RESTCLIENT_LOGGER.error("Error while sending POST request to " + url + ": " + e.getMessage(), e);
+		}
+
+		return postResponse;
+	}
+	
+	public static Response getRequestWithHeaders(String url, String contentHeader, String acceptHeader,
+			Map<String, String> headers) {
+		Response getResponse;
+		url = GlobalMethods.addToServerEndPointMap(url);
+
+		if (ConfigManager.IsDebugEnabled()) {
+			RESTCLIENT_LOGGER.info("REST-ASSURED: Sending a GET request to " + url);
+
+			getResponse = given().config(config).relaxedHTTPSValidation().headers(headers).filter(RestAssuredPrettyLogger.getMaskingFilter()).when().get(url)
+					.then().extract().response();
+
+			LogMaskingUtil.safeLogInfo(RESTCLIENT_LOGGER, GlobalConstants.REST_ASSURED_STRING_2 + getResponse.asString()
+			+ GlobalConstants.REST_ASSURED_STRING_3 + getResponse.time());
+		} else {
+			getResponse = given().config(config).relaxedHTTPSValidation().headers(headers).when().get(url).then()
+					.extract().response();
+		}
+
+		return getResponse;
+	}	
+}

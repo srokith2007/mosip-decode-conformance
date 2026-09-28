@@ -1,0 +1,450 @@
+# AGENTS.md
+
+This file provides guidance to coding agents when working with code in this repository.
+
+## Project Overview
+
+This is the OpenID Foundation conformance suite - a Spring Boot application that validates implementations of OpenID Connect, FAPI1, FAPI2, FAPI-CIBA, OpenID for Identity Assurance (eKYC), Verifiable Credentials (VCI), and Verifiable Presentations (VP).
+
+### Concepts
+
+### Test Module
+A runnable conformance scenario that drives one implementation role through a protocol behavior and records pass, warning, failure, or skip outcomes.
+
+### Test Plan
+A published grouping of test modules for a protocol profile, implementation role, and variant set that real implementers can schedule and use for certification evidence.
+
+## Workflow Rules
+
+After making code changes, always run the project build and tests before committing. If tests fail, fix them before presenting the result as complete.
+
+## Build and Development Commands
+
+```bash
+# Build (skip tests)
+mvn -B -Dmaven.test.skip -Dpmd.skip clean package
+
+# Run all tests (includes PMD and checkstyle checks)
+mvn test
+
+# Run a single test class
+mvn test -Dtest=ClassName_UnitTest
+
+# Run tests matching a pattern
+mvn test -Dtest="*FAPI*_UnitTest"
+
+# Run ArchUnit tests (quote pattern to avoid shell glob expansion)
+mvn test -Dtest='*ArchUnit*'
+
+# Skip PMD during test
+mvn test -Dpmd.skip
+
+# Skip checkstyle during test
+mvn test -Dcheckstyle.skip
+
+# Build final JAR
+mvn package
+```
+
+The built JAR is `target/fapi-test-suite.jar`.
+
+## Running Locally
+
+The conformance suite requires MongoDB and an HTTPS reverse proxy. Use one of:
+
+1. **devenv (Nix-based)**: `devenv up` - Sets up MongoDB, Nginx, TLS certs, and host aliases
+2. **Docker Compose**: `docker-compose -f docker-compose-dev.yml up`
+
+Then run the Spring Boot application from your IDE with profile `dev` or:
+```bash
+java -jar target/fapi-test-suite.jar --spring.profiles.active=dev
+```
+
+The app runs at `https://localhost.emobix.co.uk:8443` (regular) and `:8444` (mTLS).
+
+### Running the legacy (pre-redesign) UI
+
+The `legacy-ui` Spring profile serves a frozen snapshot of the pre-redesign jQuery/Handlebars
+UI (vendored from tag `release-v5.1.45` under `src/main/resources/static-legacy/` +
+`templates-legacy/`) from the **same** JAR — a temporary escape hatch if the new Lit UI causes
+problems. It is opt-in and does not affect the default build:
+
+```bash
+java -jar target/fapi-test-suite.jar --spring.profiles.active=legacy-ui
+# compose with other profiles by appending, e.g. ...=prod,legacy-ui
+```
+
+How it works: `application-legacy-ui.properties` repoints `spring.web.resources.static-locations`
+at the snapshot, `HomeController` is `@Profile("!legacy-ui")` so `/` falls back to the old
+welcome page, and `LegacyUiConfig` reverts the three redesign-restyled Thymeleaf pages. It is a
+frozen snapshot: it does **not** track new-UI features or surface config fields added after the
+snapshot (those remain settable via the old JSON config tab). To remove it, delete
+`static-legacy/`, `templates-legacy/`, `application-legacy-ui.properties`, `LegacyUiConfig`, and
+the `@Profile` on `HomeController`.
+
+### Dev loop (save-and-see)
+
+The `dev` profile activates `spring-boot-devtools` plus a source-tree static handler so edits under `src/main/resources/static/` reflect on the next browser load (LiveReload reloads the tab automatically; plain F5 also works), and Java edits trigger a fast classloader restart in ~5 seconds.
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+In IntelliJ, set the Spring Boot run config's "Active profiles" to `dev` and enable "Build project automatically" + the Registry flag `compiler.automake.allow.when.app.running` so save triggers a recompile.
+
+LiveReload runs on port 35729; install a LiveReload browser extension or rely on auto-injected `livereload.js` (DevTools serves it on the same origin). Static-only edits do not need a JVM restart — DevTools watches `src/main/resources/static` per `spring.devtools.restart.additional-paths` in `application-dev.properties`.
+
+If save-and-see does not work, you are most likely running the packaged fat JAR (`java -jar target/fapi-test-suite.jar`) instead of `spring-boot:run` — the production JAR intentionally excludes DevTools.
+
+**Production-parity invariant.** `spring-boot-devtools` MUST stay `<scope>provided</scope>` in `pom.xml`. The `maven-enforcer-plugin` rule `enforce-devtools-scope` fails the build at `validate` phase if the scope drifts to `compile`/`runtime`/`test`/`system`. Do not bypass the rule.
+
+**Never set `SPRING_PROFILES_ACTIVE=dev` in a non-dev environment.** The dev profile activates `DummyUserFilter` (`fintechlabs.devmode=true`), which injects a synthetic admin-level user on every request and bypasses real authentication. The DevTools properties added alongside that flag do not change this risk, but they do live in the same file — read `application-dev.properties` end-to-end before deploying any environment that loads it.
+
+### Running integration tests
+
+Use `scripts/run-integration-tests.sh`, which handles building, server lifecycle, readiness checks, and test execution in one command. Output is automatically captured to `/tmp/integration-test-<timestamp>.log` — the script prints the log path before redirecting, then use `Read` to inspect results.
+
+Available options (passed through to `.gitlab-ci/run-tests.sh`):
+`--client-tests`, `--oidcc-tests`, `--fapi-tests`, `--ciba-tests`, `--local-provider-tests`, `--panva-tests`, `--ekyc-tests`, `--authzen-tests`, `--federation-tests`, `--ssf-tests`, `--vc-tests`
+
+```bash
+# List numbered plans to find the right --rerun number (no build/server needed)
+.gitlab-ci/run-tests.sh --vc-tests --list
+
+# Rerun a specific plan by its number from the last run
+./scripts/run-integration-tests.sh --ekyc-tests --rerun 3
+
+# Rerun a specific module within a plan
+./scripts/run-integration-tests.sh --ekyc-tests --rerun 3:2
+
+# Rerun multiple plans
+./scripts/run-integration-tests.sh --ekyc-tests --rerun 1,3
+```
+
+The tests take a long time to run - always start by identifying a
+relevant happy flow test module using `--list` to find the plan number,
+then run it using `--rerun`. If that completes successfully then run a
+fuller set.
+
+Items tagged as "expected" errors, warnings or skips are not a problem.
+
+Prerequisites:
+- MongoDB running on `127.0.0.1:27017` (via `devenv up` or docker-compose)
+- Nginx HTTPS proxy running (ports 8443/8444 -> 8080)
+- `../conformance-suite-private` checkout (for test configs)
+- Python 3 with `pyparsing >= 3` (on macOS: `PATH=/opt/homebrew/bin:$PATH`)
+
+### OP-vs-RP Pairing
+In many cases, the integration tests are suite-vs-suite pairings where an OP test plan and an RP/client test module run against each other to validate the suite's own behavior.
+An OP-vs-RP test is an internal validation technique, not a reason to change the public certification contract of either side.
+The paired modules should still be valid tests for real implementations unless the harness is explicitly internal-only.
+
+### Running VP-only tests
+
+There is no dedicated `--vp-tests` option. To run only VP plans from `--vc-tests`, the --rerun option can be used.
+
+## Architecture
+
+### Test Module System
+
+Tests are organized as **Test Modules** that extend `AbstractTestModule`. Each module:
+- Is annotated with `@PublishTestModule` for discovery
+- Composes reusable **Conditions** (single validation units)
+- Uses an **Environment** object for state management
+- Can be parameterized via **Variants** to generate multiple test configurations
+
+```
+AbstractTestModule
+└── Protocol-specific base class (e.g., AbstractFAPI2SPFinalClientTest)
+    └── Concrete test class
+```
+
+### Key Base Classes
+
+- `AbstractTestModule` (`testmodule/`) - Core test lifecycle, condition calling, threading
+- `AbstractCondition` (`condition/`) - Base for validation units with environment access and logging
+- `ConditionSequence` (`sequence/`) - Composes conditions into reusable sequences
+- `Environment` (`testmodule/`) - JSON object storage with path navigation
+
+### Condition Calling Patterns
+
+```java
+// Fail test immediately on condition failure
+callAndStopOnFailure(MyCondition.class);
+
+// Log failure but continue execution
+callAndContinueOnFailure(MyCondition.class, Condition.ConditionResult.WARNING);
+
+// Skip if required environment values are missing
+skipIfMissing(new String[]{"required_key"}, null, Condition.ConditionResult.INFO,
+              MyCondition.class, Condition.ConditionResult.FAILURE);
+
+// Call a sequence of conditions
+call(sequence(MySequence.class));
+```
+
+### Environment Usage
+
+```java
+// Store objects
+env.putObject("key", jsonObject);
+env.putString("key", "value");
+
+// Retrieve with path navigation
+String value = env.getString("object", "nested.path");
+JsonObject obj = getJsonObjectFromEnvironment(env, "object", "path");
+```
+
+### Package Organization
+
+- `condition/` - Reusable validation conditions (subdivided by `as/` for server-side, `client/` for client-side)
+- `testmodule/` - Core framework classes (TestModule, Environment, AbstractTestModule)
+- `sequence/` - Reusable condition sequences
+- `variant/` - Variant parameter enums and service
+- `fapi1advancedfinal/`, `fapi2spfinal/`, `fapi2spid2/`, `fapiciba/` - FAPI protocol tests
+- `openid/` - OpenID Connect tests
+- `vci10issuer/`, `vci10wallet/` - Verifiable Credentials tests
+- `vp1finalverifier/`, `vp1finalwallet/`, `vpid2*/`, `vpid3*/` - Verifiable Presentations tests
+- `runner/` - Test execution and HTTP routing
+- `plan/` - Test plan organization
+
+### Kotlin Sources
+
+The project is primarily Java but contains Kotlin source files (under `src/main/kotlin/`) for multipaz library integration:
+- `com/android/identity/testapp/` - VP test credential provisioning (TestAppUtils.kt)
+- `org/multipaz/testapp/` - VCI mdoc credential creation (VciMdocUtils.kt)
+- `net/openid/conformance/util/` - suite-owned Kotlin such as TestKeysAndCerts.kt (the mdoc
+  IACA root and the runtime-minted, daily-rotated document signer certificate — the file to
+  edit when the suite's mdoc trust anchor changes)
+
+These use the [multipaz](https://github.com/openwallet-foundation/multipaz) library for mdoc/SD-JWT credential operations.
+
+### JSON Schema Validation
+
+Spec compliance checks can be implemented using JSON Schema validation. Schemas live in `src/main/resources/json-schemas/` and conditions extend `AbstractJsonSchemaBasedValidation`:
+
+```java
+public class ValidateDCQLQuery extends AbstractJsonSchemaBasedValidation {
+    @Override
+    protected JsonSchemaValidationInput createJsonSchemaValidationInput(Environment env) {
+        JsonObject dcql = (JsonObject) env.getElementFromObject("client", "dcql");
+        return new JsonSchemaValidationInput("DCQL query",
+            "json-schemas/oid4vp/dcql_request.json", dcql);
+    }
+}
+```
+- Keep validation strict where the specification defines fixed fields.
+- Unknown properties should raise warnings (not errors)
+- A condition's own `log()` / `logSuccess()` calls are INFO-level — they do **not** produce warnings in the test log. The only way to surface a WARNING is for the **caller** to invoke the condition with `ConditionResult.WARNING` via `onFail(ConditionResult.WARNING)` or `callAndContinueOnFailure(..., ConditionResult.WARNING, ...)`. Therefore, if a check must appear as a warning, put it in a **separate condition** that `throw error(...)` on the finding, and have the caller set the severity to WARNING. Do not try to "warn" from inside a condition with `log()` — it will be invisible as a warning.
+
+### Variants
+
+Tests use `@VariantParameters` to generate multiple configurations from one class:
+
+```java
+@VariantParameters({ClientAuthType.class, FAPIResponseMode.class, ...})
+public abstract class AbstractFAPI2SPFinalClientTest extends AbstractTestModule {
+    // getVariant(ClientAuthType.class) returns the selected variant
+}
+```
+
+Use `@VariantNotApplicable` to exclude invalid combinations. Inclusion is the default: a new value of a variant parameter (e.g. a new ecosystem in a `fapi_profile` enum) gets every test module until someone explicitly opts that module out. That is the safe default — a missed exclusion is a visible failure, a missed inclusion silently drops coverage.
+
+Use `@VariantApplicableOnly` only for a module that exists for one (or two) specific values because it exercises a rule or feature only those values define (Brazil payment consent signing, CDR `sharing_duration`, ConnectID `purpose`, KSA `exp` limits). Don't use it for a generic module that several values happen to opt out of (registered redirect URIs, grant management, refresh-token mandatoriness) — those stay `@VariantNotApplicable` so a new value inherits them. Both compose across the class hierarchy: each `@VariantNotApplicable` removes its values, each `@VariantApplicableOnly` intersects with its values.
+
+Profile-specific behaviour (`FAPICIBAServerProfileBehavior`, `VCIClientProfileBehavior`, ...) is expressed as data methods (booleans, classes) and action methods returning a `ConditionSequence` (null = no-op) that the module `call()`s. Don't add `module.doX()` delegator methods so a behaviour can run imperative code; compose a sequence instead.
+
+### Configuration Fields
+
+Test config fields the user fills in on `schedule-test.html` (e.g., `client.dcql`, `client.verifier_info`) are only shown in the form if they appear in the aggregated `configurationFields` for the selected plan and modules. The aggregator unions, in this order:
+
+- `@PublishTestPlan(configurationFields = {...})` on the plan class
+- `@PublishTestModule(configurationFields = {...})` on each test module
+- `@ConfigurationFields({...})` on the module class **and any of its superclasses** (walked via reflection)
+- `@VariantConfigurationFields(parameter = X.class, value = "y", configurationFields = {...})` matched against the selected variants
+
+Place each field declaration where the field is actually consumed:
+
+- **`@ConfigurationFields` on the abstract base class** for fields that every module in the family consumes (e.g., `client.jwks`, `client.dcql` on `AbstractVP1FinalWalletTest` because the wallet auth-request sequence reads them on every concrete subclass). Don't repeat them on every leaf module.
+- **`@PublishTestModule(configurationFields = ...)` on a single concrete module** only when the field is module-specific.
+- **`@VariantConfigurationFields`** for fields that only apply under specific variant values (e.g., `client.client_id` only when `client_id_prefix=x509_san_dns`).
+
+When you add a new condition that reads a config field via `env.getElementFromObject("client", "new_field")`, locate the corresponding `@ConfigurationFields` (typically on the abstract base for that test family) and add `"client.new_field"` there — otherwise the field stays hidden in the UI even though the code reads it.
+
+### Test Plans
+
+Test plans group related tests for certification via `@PublishTestPlan`:
+
+```java
+@PublishTestPlan(testPlanName = "fapi2-security-profile-final", testModules = {...})
+public class FAPI2SPFinalTestPlan implements TestPlan {}
+```
+
+## Technical Standards & RFCs
+
+When interpreting RFCs or technical specifications, present multiple defensible interpretations with trade-offs rather than committing to a single answer. Flag areas of ambiguity explicitly.
+
+The text of the IETF and OIDF specifications referenced by `LogEntryHelper.specLinks` is checked in under `library/specs/` as numbered plain text; `library/specs/manifest.json` maps each requirement-tag prefix to its file (see `library/README.md`). Read the clause there before citing it. When you add or change a `specLinks` entry, update the manifest and run `scripts/spec_library.py sync` in the same commit — `LogEntryHelper_UnitTest` fails otherwise. ISO texts live in `../conformance-suite-private/library/iso/`.
+
+Key specifications for VP/VCI work:
+- **OID4VP 1.0 Final**: https://openid.net/specs/openid-4-verifiable-presentations-1_0.html
+- **OID4VCI 1.0 Final**: https://openid.net/specs/openid-4-verifiable-credentials-issuance-1_0.html
+- **HAIP 1.0 Final**: https://openid.net/specs/openid4vc-high-assurance-interoperability-profile-1_0.html
+- **OID4VP WG Draft**: https://openid.github.io/OpenID4VP/openid-4-verifiable-presentations-wg-draft.html
+- **OID4VP GitHub**: https://github.com/openid/OpenID4VP
+
+Identity Assurance spec locations used in this codebase:
+- https://openid.net/specs/openid-connect-4-identity-assurance-1_0.html
+- https://openid.net/specs/openid-connect-4-ida-attachments-1_0.html
+- https://openid.net/specs/openid-connect-4-ida-claims-1_0.html
+- https://openid.net/specs/openid-ida-verified-claims-1_0.html
+
+OpenID Federation spec locations:
+- **OpenID Federation 1.0**: https://openid.net/specs/openid-federation-1_0.html
+
+## Error Messages for Configuration Issues
+
+When a condition fails because of missing or invalid test configuration (fields the user fills in on schedule-test.html), error messages should reference the UI labels the user sees, not internal JSON key names. Include "in the test configuration" so the user knows where to look. For example:
+
+- Good: `"'Payment consent request JSON' field is missing from the 'Resource' section in the test configuration"`
+- Bad: `"brazilPaymentConsent not found in resource configuration"`
+
+Check `src/main/resources/static/schedule-test.html` for the field labels displayed to users.
+
+## Test-Suite Behavior Expectations
+
+- This repository is a conformance test suite; explicit failures for invalid protocol behavior are expected.
+- Ignored catches can be acceptable if they still lead to a clear and meaningful test failure.
+- Generic `error(...)` text is acceptable when `args(...)` includes actionable detail.
+- Tests that require a relying party to skip an unusable JWK must use a guaranteed-unsupported synthetic key: an AKP/post-quantum key with a non-existent parameter set, or a made-up `kty`/`alg` (see `AddUnusableKeysToServerPublicJwks`). Never a real-but-niche algorithm such as Brainpool; a library update can make it usable and silently invert the test.
+
+### Emulated side vs side under test
+
+The suite plays two roles in every module: it **validates** the implementation under test, and it **emulates** the counterpart (an AS for client tests, a client for AS tests, a wallet, issuer or verifier). These have different standards.
+
+- Validation follows the spec closely: every MUST the module is meant to cover is checked, severities map to the normative language, and unknown fields are flagged. This is the certification contract.
+- The emulated side only needs to be good enough to drive the implementation under test through the scenario. It is frequently non-compliant on purpose (bad signatures, wrong nonces, missing certificates, replayed tokens) because that is the test. Don't spend effort making the emulator fully conformant, and don't add validation of the emulator's own output.
+- Never relax a validator because our own emulator would not pass it. If a suite-vs-suite CI pairing fails on a correct check, fix the emulator or add an expected-failures entry (see "OP-vs-RP Pairing"); do not weaken the check.
+
+### Skips vs failures
+
+`fireTestSkipped` is only for cases where the tester or the server declared a feature out of play that is optional **under the selected profile** (RSA keys not configured, PAR not advertised, optional `state` omitted by the client). A skip must never let an implementer certify without the mandatory behaviour under test having been exercised.
+
+- Optionality is decided by the profile, not the base spec. A token response without a refresh token is a skip under plain FAPI, where refresh tokens are optional, but a stop-on-failure under Brazil, which mandates them: see the `FAPIBrazilRefreshTokenRequired` branch in `FAPI2SPFinalRefreshToken` for the pattern. Check every profile the module runs under before writing a skip.
+- If a server choice, even one a spec permits with a MAY (e.g. RFC 7591 section 3.2.1 lets the server substitute registered metadata), means the behaviour under test cannot be exercised, that is a `callAndStopOnFailure` FAILURE whose message tells the tester what to reconfigure. Not a skip, not INFO.
+- "The spec allows it" does not override test intent. The selected variant is a fixed contract: a module run with private_key_jwt does not adapt to whatever auth method the registration response returned. A profile validator enforces the profile (Brazil mandates private_key_jwt) regardless of what the base spec permits.
+- A MAY describes what the implementation may do; it does not describe what the suite is testing.
+
+### Sender vs Receiver Validation
+
+When specs say "MUST ignore unknown properties", that applies to **receivers** (e.g., wallets processing DCQL queries). The conformance suite validates **senders** (e.g., verifiers constructing DCQL queries), so JSON schemas SHOULD use `additionalProperties: false` to flag unknown or misspelled fields as warnings (not errors) — senders should not include undefined properties.
+
+### HTTP Endpoint Validation Checklist
+
+When the test suite **calls an external endpoint** (e.g., a credential issuer's challenge endpoint), validate everything in the response:
+- HTTP status code (e.g., `EnsureHttpStatusCodeIs200`)
+- Response headers: `Content-Type` (e.g., `EnsureContentTypeJson`), `Cache-Control` where the spec requires it
+- Response body: required fields present and valid, unknown fields flagged as a WARNING via a separate condition
+
+When an external client **calls a test-suite endpoint** (e.g., a wallet calling the emulated challenge endpoint), validate everything in the request:
+- HTTP method (e.g., `EnsureIncomingRequestMethodIsPost`)
+- URL query parameters — if the spec defines none, check they are empty (`EnsureIncomingUrlQueryIsEmpty`)
+- Request body — if the spec defines none, check it is empty (`EnsureIncomingRequestBodyIsEmpty`)
+- Request headers where the spec defines requirements (e.g., `Content-Type`, `Accept`)
+
+Each check should be a separate condition so the caller controls the severity (FAILURE vs WARNING).
+
+## REST API endpoints
+
+Any new or changed handler under `/api/**` (`@GetMapping` / `@PostMapping` / `@RequestMapping`, or a change to an existing handler's authorization) must land in the same MR as security tests in `scripts/run-security-tests.py`, run by the `security_test` CI job via `.gitlab-ci/run-tests.sh --security-tests`. Cover, as applicable: unauthenticated access is rejected (401); share-link / private-link tokens cannot reach endpoints outside their allow-list (401/403); the owner or admin can reach their own resource (200); an unknown and an unauthorized resource id return the same 404 so existence does not leak. Use a short timeout on any long-poll endpoint so the suite stays fast.
+
+API tokens are always `ROLE_USER` and admins cannot mint an admin token, so the script can only prove denial for admin-only routes; positive admin coverage needs an OIDC browser session. When planning a new endpoint, include its UI consumer (page or `cts-*` component, plus fixtures in `frontend/e2e/fixtures/`) and the security tests in the same plan, not as follow-ups.
+
+## Code Quality
+
+- **Checkstyle**: Google Java Style (configured in `.checkstyle.xml`)
+- **PMD**: Rules in `.pmd.ruleset.xml`
+- **Error Prone**: Enabled at compile time with specific exclusions
+- **ArchUnit**: Architecture tests in `src/test/java/net/openid/conformance/archunit/`
+- **JSON access in Java**: Avoid `JsonElement.getAsString/getAsInt/getAsLong/...`; use `OIDFJSON` helpers instead (e.g., `OIDFJSON.getString(...)`) to satisfy ArchUnit and avoid implicit conversions.
+- **Comments describe the code, not its history.** Don't explain what the code no longer does, what an earlier commit or review round did, or why an alternative was rejected. State the invariant the current code relies on, or say nothing. Rejected alternatives belong in the commit message.
+
+Tests compile with `-Werror` so all warnings must be resolved.
+
+### CI checks and local pre-commit hooks
+
+When a new check (linter, formatter, static analysis) is added to the GitLab CI
+pipeline (`.gitlab-ci.yml` or `.gitlab/ci/*.yml`), add a matching pre-commit hook
+under `git-hooks.hooks.<name>` in `devenv.nix` in the same change, so contributors
+catch it at commit time instead of on a red pipeline. Existing hooks and the CI
+jobs they mirror:
+
+| Hook | CI job |
+|---|---|
+| `fix-whitespace` | `check-trailing-whitespace` |
+| `mvn-check` | the Checkstyle/PMD half of `test` |
+| `prettier` | the `format:check` step of `frontend_lint` |
+| `frontend-checks` | `frontend_lint` (`npm run test:ci`) |
+
+Only mirror checks that are fast and need no infrastructure. Jobs requiring
+MongoDB, nginx, a running server, `../conformance-suite-private`, a browser image
+or network access (`frontend_e2e_test`, the integration and security test jobs,
+`chromatic`), and the full `mvn` build and unit-test run, stay CI-only.
+
+## Deliberate non-features
+
+These were tried and rejected. Don't reintroduce them, and don't "fix" them in passing. If you think the reasoning has changed, raise it in its own issue.
+
+- **Private keys appear in test logs.** This covers every private key the suite handles: mTLS keys, client JWKS signing and encryption keys, DPoP keys, wallet and issuer keys, anything in the test configuration or environment. Redaction was attempted for mTLS keys in !1294 (issue #1133) and abandoned: keys surface in several places (logged config, environment dumps, outbound request logs, exported zips) so partial redaction is pointless and misleading, and redacting implies a duty of care the suite does not take on. The stance is: private keys WILL appear in logs; testers must use test keys and treat them as revoked afterwards. Don't add redaction for any key type.
+- **No HTTP connection pooling.** Added in !1551, reverted in !1573 (issue #1466) after intermittent Authlete Brazil DCR mTLS failures. A fresh TLS handshake per call is deliberate.
+
+## Code Review
+
+When asked to review a commit or branch, structure the review by file and call out: correctness issues (especially dead code or unreachable paths), API misuse, and behavioral changes. Don't just summarize — actively look for bugs.
+
+## Scratch artifacts
+
+Save screenshots, traces, and any other unversioned dev artifacts under `tmp/` at the repo root. `tmp/` and the legacy `screenshots/` directory are gitignored, so artifacts written there stay out of commits without per-file ignore rules.
+
+- **Screenshots:** `tmp/screenshots/<descriptive-name>.png`. Use this for agent-browser screenshots, chrome-devtools MCP captures, Playwright `page.screenshot({ path })` calls in ad-hoc debugging sessions, and any other one-off visual evidence.
+- **Other scratch output:** drop it directly under `tmp/` (traces, profiling files, throwaway logs). The directory exists to absorb anything you don't want to think about ignoring individually.
+- **Do NOT** write screenshots to the repo root or to `screenshots/` — both will be left behind by `git status` as untracked files cluttering the working tree. The root-level `tmp/` rule was added specifically to absorb this.
+- Tracked image assets (e.g., `src/main/resources/static/images/openid.png`) are unaffected — the ignore rule is scoped to the `/tmp/` and `/screenshots/` directories.
+
+## Git Workflow Preference
+
+- To fix up a non-HEAD commit, use `git commit -m "fixup! <target commit message>"` then `git -c sequence.editor=true rebase -i --autosquash <base>` (`--autosquash` requires `-i`; `sequence.editor=true` suppresses the editor). This is safer than manual `reset --soft` + re-staging workflows.
+
+## Git Operations
+
+When making multi-file changes or library upgrades, create separate atomic commits per logical change. Before committing, verify the build passes for each commit independently.
+
+If the change closes or fixes a GitLab issue — either one the user named when asking for the work, or one that's obviously the driver from the context — end the commit message with a trailer line like `Closes #1650` or `Fixes #1650` (just the `#N`, not a URL). GitLab auto-closes the issue when the MR merges. If the connection to an issue isn't obvious, ask rather than guess.
+
+One issue per MR. Unrelated or cross-cutting improvements noticed on the way (logging, refactors, "while I'm here" fixes) go in their own branch and MR even if small: they need separate review and may already have been decided against (see "Deliberate non-features").
+
+The commit series is what gets reviewed: no add-then-remove or add-then-revert pairs. Squash them away (see "Git Workflow Preference") so the MR shows only the end state.
+
+## Test Naming Convention
+
+Unit test files follow the pattern `*_UnitTest.java` (e.g., `MyCondition_UnitTest.java`).
+
+Unit tests are for Conditions (and pure utility classes). Test-module control flow is covered by the OP-vs-RP CI pairings in `.gitlab-ci/run-tests.sh`: when you add or change a module path, add or adjust a pairing (and the expected-failures JSON) rather than writing a module unit test. If a module path truly cannot be paired, a narrow module test is acceptable, but it must drive the module through its public/protected API only: no `ReflectionTestUtils.setField` on private state such as `status`, no mocked `TestExecutionManager`, no overriding `callAndStopOnFailure` to capture arguments.
+
+## Frontend
+
+Frontend guidance is split by directory and loads automatically when working under each: `frontend/AGENTS.md` (Playwright E2E specs, lint/format/unit/Storybook gates), `src/main/resources/static/AGENTS.md` (icons, badges), and `src/main/resources/static/components/AGENTS.md` (`cts-*` component authoring). The command reference is `frontend/README.md`.
+
+## Key Dependencies
+
+- **multipaz** (CBOR/COSE/mdoc library): Source is at https://github.com/openwallet-foundation/multipaz — use this to look up API details rather than unpacking JARs.
+- **Nimbus JOSE+JWT** (JWT/JWK/JWS/JWE library): Source is at https://bitbucket.org/connect2id/nimbus-jose-jwt/src/master/ — use this to look up API details rather than unpacking JARs.
+- **Lit** (web-components runtime): Vendored bundle at `src/main/resources/static/vendor/lit/lit.js` is the full [`lit-all.min.js`](https://github.com/lit/dist) release, so every directive (`classMap`, `repeat`, `when`, `ifDefined`, `ref`, …) is available at runtime without a bundler. Bump via `frontend/scripts/update-vendor-lit.sh` (pinned by git tag + SHA-256 digest).
+- **Monaco editor** (JSON editor for `schedule-test.html`): Vendored AMD distribution at `src/main/resources/static/vendor/monaco-editor/vs/`. The single supported entry point is the `<cts-json-editor>` Lit primitive — pages must NEVER call `monaco.editor.create(...)` directly, since that bypasses the wrapper's lazy-load, fallback-to-textarea, and disposal lifecycle. Bump via `frontend/scripts/update-vendor-monaco.sh` (pinned by version + tarball SHA-256). See `src/main/resources/static/vendor/monaco-editor/README.md` for the curated minimal subset rationale.
+
+## Creating New Tests
+
+1. Create a condition class extending `AbstractCondition` with `@PreEnvironment`/`@PostEnvironment` annotations
+2. Create a test module extending the appropriate abstract base class
+3. Annotate with `@PublishTestModule`
+4. Add to a test plan

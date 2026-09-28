@@ -1,0 +1,45 @@
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+package io.mosip.certify.core.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
+
+/**
+ * OAuth 2.0 Token Response DTO
+ * Returned when exchanging authorization code for access token
+ * 
+ * Based on RFC 6749 and OpenID4VCI specification
+ */
+@Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class OAuthTokenResponse {
+
+    /**
+     * REQUIRED. The access token issued by the authorization server.
+     */
+    @JsonProperty("access_token")
+    private String accessToken;
+
+    /**
+     * REQUIRED. The type of the token issued. Value is case insensitive. Typically "Bearer".
+     */
+    @JsonProperty("token_type")
+    private String tokenType;
+
+    /**
+     * RECOMMENDED. The lifetime in seconds of the access token.
+     */
+    @JsonProperty("expires_in")
+    private Integer expiresIn;
+
+    /**
+     * OPTIONAL. The scope of the access token.
+     */
+    @JsonProperty("scope")
+    private String scope;
+}

@@ -1,0 +1,43 @@
+package net.openid.conformance.condition.client;
+
+import net.openid.conformance.condition.AbstractJsonSchemaBasedValidation;
+
+import com.google.gson.JsonObject;
+import net.openid.conformance.condition.PreEnvironment;
+import net.openid.conformance.testmodule.Environment;
+import net.openid.conformance.util.validation.JsonSchemaValidationInput;
+
+/**
+ * Validates the structure of authorization server / OpenID provider metadata (the {@code server}
+ * environment object) against a superset JSON schema of RFC 8414 / OpenID Connect Discovery and the
+ * various profile extensions. The schema is purely structural (types/formats of whatever fields are
+ * present); only those errors are reported as failures. Unknown properties are ignored here and
+ * instead surfaced as warnings by {@link CheckForUnexpectedParametersInServerMetadata}.
+ * Required-field checks (including {@code issuer}) are left to the individual CheckDiscEndpoint* /
+ * issuer-check conditions in each protocol's discovery verification.
+ */
+public class ValidateServerMetadataAgainstSchema extends AbstractJsonSchemaBasedValidation {
+
+	@Override
+	protected JsonSchemaValidationInput createJsonSchemaValidationInput(Environment env) {
+		JsonObject serverMetadata = getServerMetadata(env);
+		String schemaResource = "json-schemas/rfc8414/oauth_authorization_server_metadata.json";
+		String inputName = "OAuth Authorization Server metadata";
+		return new JsonSchemaValidationInput(inputName, schemaResource, serverMetadata);
+	}
+
+	protected JsonObject getServerMetadata(Environment env) {
+		return env.getObject("server");
+	}
+
+	@Override
+	protected boolean ignoreUnknownPropertyStrictness() {
+		return true;
+	}
+
+	@Override
+	@PreEnvironment(required = "server")
+	public Environment evaluate(Environment env) {
+		return super.evaluate(env);
+	}
+}
