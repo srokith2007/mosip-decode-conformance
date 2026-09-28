@@ -1,0 +1,12 @@
+{
+  "certify": {
+    "passed": 34,
+    "failed": 3,
+    "warnings": 3
+  },
+  "verify": {
+    "passed": 3,
+    "failed": 1,
+    "warnings": 0
+  }
+}
