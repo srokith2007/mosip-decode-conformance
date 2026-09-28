@@ -58,19 +58,22 @@ class ResultNormalizer:
 
         regressions = []
 
+        expected_failures = expected.get("expected_failures", 0)
+
+        if result["failed"] > expected_failures:
+            regressions.append(
+            f"Unexpected failures: {result['failed']} > "
+            f"{expected_failures} expected"
+        )
+
         if result["passed"] < expected["passed"]:
             regressions.append(
-                f"Passed tests decreased: {result['passed']} < {expected['passed']}"
-            )
-
-        if result["failed"] > expected["failed"]:
-            regressions.append(
-                f"Failed tests increased: {result['failed']} > {expected['failed']}"
-            )
+            f"Passed tests decreased: {result['passed']} < {expected['passed']}"
+        )
 
         if result["warnings"] > expected["warnings"]:
             regressions.append(
-                f"Warnings increased: {result['warnings']} > {expected['warnings']}"
-            )
+            f"Warnings increased: {result['warnings']} > {expected['warnings']}"
+        )
 
         return len(regressions) == 0, regressions

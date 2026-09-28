@@ -43,7 +43,7 @@ echo ""
 echo "Waiting for OpenID Conformance Suite..."
 
 for i in {1..60}; do
-    if curl -k -s -o /dev/null \
+    if curl -k -f -s -o /dev/null \
         "https://localhost.emobix.co.uk:8443/api/plan?length=1"; then
         echo "Conformance Suite is ready."
         break
@@ -61,7 +61,7 @@ echo ""
 echo "Waiting for Inji Certify..."
 
 for i in {1..60}; do
-    if curl -s -o /dev/null \
+    if curl -f -s -o /dev/null \
         "http://localhost:8090/v1/certify/.well-known/did.json"; then
         echo "Inji Certify is ready."
         break
@@ -79,7 +79,7 @@ echo ""
 echo "Waiting for Inji Verify..."
 
 for i in {1..60}; do
-    if curl -s -o /dev/null \
+    if curl -f -s -o /dev/null \
         "http://localhost:8080/v1/verify/actuator/health"; then
         echo "Inji Verify is ready."
         break
