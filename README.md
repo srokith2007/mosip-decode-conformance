@@ -206,6 +206,19 @@ Process Results
     ↓
 Benchmark Check
 ```
+### REST API Operations
+
+The harness communicates with the OpenID Conformance Suite using the following REST API operations:
+
+| Method | Endpoint                             | Purpose                             |
+| ------ | ------------------------------------ | ----------------------------------- |
+| `GET`  | `/api/plan?length=1`                 | Check Conformance Suite readiness   |
+| `POST` | `/api/plan`                          | Create/configure a test plan        |
+| `POST` | `/api/runner`                        | Create a test execution from a plan |
+| `POST` | `/api/runner/{module_id}`            | Start the test execution            |
+| `GET`  | `/api/runner/{module_id}/wait-state` | Poll execution status               |
+
+The harness handles the API calls programmatically and processes the resulting execution state and test results.
 
 Implementation:
 
